@@ -3,4 +3,4 @@ uvicorn
 selenium
 undetected-chromedriver
 webdriver-manager==4.0.1
-setuptools
+setuptools>=65.5.0

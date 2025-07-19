@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
-from scraper import scrape_with_fallback  # This should return a dict with social_links and emails
+from scraper import scrape_with_fallback
 
 app = FastAPI()
 
@@ -36,41 +36,61 @@ async def scrape(url: str, timeout: int = 10):
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, scrape_with_fallback, url, timeout)
 
-        # Case 1: result contains error
-        if isinstance(result, dict) and "error" in result:
-            raise HTTPException(status_code=500, detail=result["error"])
+        # Handle new structured response
+        if isinstance(result, dict) and "status" in result:
+            if result["status"] == "error":
+                # Return error data instead of raising exception
+                return {
+                    "url": url,
+                    "social_links": [],
+                    "emails": [],
+                    "message": f"Error: {result['error']}",
+                    "counts": {"social_links": 0, "emails": 0}
+                }
+            
+            # Success case
+            data = result.get("data", {})
+            return {
+                "url": url,
+                "social_links": data.get("social_links", []),
+                "emails": data.get("emails", []),
+                "message": "Success" if data.get("social_links") or data.get("emails") else "No data found",
+                "counts": {
+                    "social_links": len(data.get("social_links", [])),
+                    "emails": len(data.get("emails", [])),
+                }
+            }
 
-        # Case 2: valid structured result
-        if isinstance(result, dict) and "social_links" in result and "emails" in result:
+        # Legacy format fallback
+        if isinstance(result, dict) and "social_links" in result:
             return {
                 "url": url,
                 "social_links": result["social_links"],
-                "emails": result["emails"],
-                "message": "Success" if result["social_links"] or result["emails"] else "No data found",
+                "emails": result.get("emails", []),
+                "message": "Success",
                 "counts": {
                     "social_links": len(result["social_links"]),
-                    "emails": len(result["emails"]),
+                    "emails": len(result.get("emails", [])),
                 }
             }
 
-        # Case 3: fallback legacy behavior (list result)
-        if isinstance(result, list):
-            return {
-                "url": url,
-                "social_links": result,
-                "emails": [],
-                "message": "Only social links found (no emails)",
-                "counts": {
-                    "social_links": len(result),
-                    "emails": 0,
-                }
-            }
-
-        # Fallback case
-        raise HTTPException(status_code=500, detail="Unexpected scraping result format")
+        # Unexpected format
+        return {
+            "url": url,
+            "social_links": [],
+            "emails": [],
+            "message": "Unexpected result format",
+            "counts": {"social_links": 0, "emails": 0}
+        }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Scraping failed: {str(e)}")
+        return {
+            "url": url,
+            "social_links": [],
+            "emails": [],
+            "message": f"Exception: {str(e)}",
+            "counts": {"social_links": 0, "emails": 0}
+        }
 
 # For running directly with: `python main.py`
 if __name__ == "__main__":

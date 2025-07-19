@@ -128,21 +128,41 @@ def scrape_social_links_alternative(url: str, timeout: int = 10):
             except:
                 pass
 
-# ---------------------- Smart Wrapper ----------------------
 def scrape_with_fallback(url: str, timeout: int = 10):
     """Try undetected_chromedriver first, fallback to regular ChromeDriver"""
+    
+    # Add protocol if missing
+    if not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+    
+    # Try primary scraper
     try:
         result = scrape_social_links(url, timeout)
         if isinstance(result, dict) and "error" not in result:
-            return result
-    except Exception:
+            return {
+                "status": "success",
+                "url": url,
+                "data": result
+            }
+    except Exception as e:
         pass
-
+    
+    # Try fallback scraper
     try:
         result = scrape_social_links_alternative(url, timeout)
         if isinstance(result, dict) and "error" not in result:
-            return result
-        else:
-            return {"error": "Fallback scraper returned invalid result"}
+            return {
+                "status": "success",
+                "url": url,
+                "data": result
+            }
     except Exception as e:
-        return {"error": f"Both methods failed. Last error: {str(e)}"}
+        pass
+    
+    # Both failed - return structured error
+    return {
+        "status": "error",
+        "error": "Both scraping methods failed",
+        "url": url,
+        "data": {"social_links": [], "emails": []}
+    }
